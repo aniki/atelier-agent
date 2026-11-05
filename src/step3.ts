@@ -1,45 +1,73 @@
-// ÉTAPE 3 : la boucle agentique.
-// Objectif : le modèle enchaîne autant d'outils qu'il veut, jusqu'à ce qu'il réponde en texte.
-// Lancer :  npm run step3 -- "Quels fichiers y a-t-il et que fait src/cart.ts ?"
+// ÉTAPE 3 (solution) : la boucle agentique, deux outils, plafond de tours, erreurs renvoyées au modèle
+import { readFileSync, readdirSync } from "node:fs";
 import { Type, type Content, type FunctionDeclaration, type Part } from "@google/genai";
 import { ai, MODEL, safePath } from "./config.ts";
 
-const MAX_TURNS = 10; // garde-fou : la boucle ne tourne jamais indéfiniment
+const MAX_TURNS = 10;
 
-// TODO 1 : reprends read_file (étape 2) et ajoute list_files (liste un dossier).
 const declarations: FunctionDeclaration[] = [
-  { name: "read_file", description: "TODO", parameters: { type: Type.OBJECT, properties: {} } },
+  {
+    name: "read_file",
+    description: "Lit le contenu d'un fichier texte du projet. Chemin relatif à la racine du projet.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { path: { type: Type.STRING, description: "Chemin relatif, ex. src/cart.ts" } },
+      required: ["path"],
+    },
+  },
+  {
+    name: "list_files",
+    description: "Liste les fichiers et dossiers d'un dossier du projet. Chemin relatif ('.' pour la racine).",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { path: { type: Type.STRING, description: "Dossier à lister, ex. ." } },
+      required: ["path"],
+    },
+  },
 ];
 
 const implementations: Record<string, (args: Record<string, unknown>) => string> = {
-  // read_file: (args) => ...,
-  // list_files: (args) => ...,
+  read_file: (args) => readFileSync(safePath(String(args.path)), "utf8"),
+  list_files: (args) =>
+    readdirSync(safePath(String(args.path ?? ".")), { withFileTypes: true })
+      .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+      .join("\n"),
 };
 
-// TODO 2 : run(name, args) exécute l'outil dans un try/catch.
-// Une erreur doit revenir au modèle sous forme de texte ("ERREUR : ..."), pas planter le programme.
-function run(_name: string, _args: Record<string, unknown>): string {
-  void safePath;
-  throw new Error("TODO");
+/** Exécute un outil. Une erreur n'est PAS une exception du programme : c'est une info pour le modèle. */
+function run(name: string, args: Record<string, unknown>): string {
+  try {
+    const impl = implementations[name];
+    if (!impl) return `ERREUR : outil inconnu ${name}`;
+    return impl(args);
+  } catch (e) {
+    return `ERREUR : ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 
 async function agent(question: string): Promise<string> {
   const contents: Content[] = [{ role: "user", parts: [{ text: question }] }];
-  const config = { tools: [{ functionDeclarations: declarations }] };
+  const config = {
+    systemInstruction: "Tu es un assistant de développement. Utilise les outils pour consulter le projet avant de répondre.",
+    tools: [{ functionDeclarations: declarations }],
+  };
 
-  // TODO 3 : boucle for (turn = 1..MAX_TURNS)
-  //   a. appelle generateContent
-  //   b. s'il n'y a pas de res.functionCalls : return res.text
-  //   c. sinon : push res.candidates![0].content!, exécute CHAQUE appel avec run(),
-  //      push { role: "user", parts } avec un functionResponse par appel
-  // TODO 4 : après la boucle, retourne un message "plafond atteint".
-  void contents;
-  void config;
-  void MODEL;
-  void ai;
-  void implementations;
-  void ({} as Part);
-  throw new Error("TODO : étape 3 à écrire");
+  for (let turn = 1; turn <= MAX_TURNS; turn++) {
+    const res = await ai.models.generateContent({ model: MODEL!, contents, config });
+    const calls = res.functionCalls;
+    if (!calls || calls.length === 0) {
+      return res.text ?? "(pas de réponse)";
+    }
+    contents.push(res.candidates![0].content!);
+    const parts: Part[] = [];
+    for (const call of calls) {
+      console.log(`[tour ${turn}] ${call.name}(${JSON.stringify(call.args)})`);
+      const result = run(call.name!, call.args ?? {});
+      parts.push({ functionResponse: { name: call.name!, response: { result } } });
+    }
+    contents.push({ role: "user", parts });
+  }
+  return `Arrêt : plafond de ${MAX_TURNS} tours atteint.`;
 }
 
 const question = process.argv[2] ?? "Quels fichiers y a-t-il dans le projet et que fait src/cart.ts ?";

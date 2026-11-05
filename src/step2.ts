@@ -1,33 +1,41 @@
-// ÉTAPE 2 : un outil read_file, appelé une seule fois (pas encore de boucle).
-// Lancer :  npm run step2 -- "Que contient package.json ?"
+// ÉTAPE 2 (solution) : un outil read_file, appelé UNE fois
+import { readFileSync } from "node:fs";
 import { Type, type Content, type FunctionDeclaration } from "@google/genai";
 import { ai, MODEL, safePath } from "./config.ts";
 
-// TODO 1 : déclare l'outil read_file (name, description claire, paramètre `path` de type STRING).
 const readFileDecl: FunctionDeclaration = {
   name: "read_file",
-  description: "TODO : décris l'outil pour le modèle",
-  parameters: { type: Type.OBJECT, properties: {} },
+  description: "Lit le contenu d'un fichier texte du projet. Le chemin est relatif à la racine du projet.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: { path: { type: Type.STRING, description: "Chemin relatif, ex. package.json" } },
+    required: ["path"],
+  },
 };
 
-// TODO 2 : implémente la fonction qui lit réellement le fichier.
-// Utilise safePath(...) pour refuser les chemins hors du dossier de travail.
-function readFile(_args: Record<string, unknown>): string {
-  void safePath;
-  throw new Error("TODO");
+function readFile(args: Record<string, unknown>): string {
+  return readFileSync(safePath(String(args.path)), "utf8");
 }
 
 const question = process.argv[2] ?? "Que contient package.json ?";
 const contents: Content[] = [{ role: "user", parts: [{ text: question }] }];
+const config = { tools: [{ functionDeclarations: [readFileDecl] }] };
 
-// TODO 3 : appelle generateContent avec config: { tools: [{ functionDeclarations: [readFileDecl] }] }.
-// TODO 4 : si res.functionCalls contient une demande : exécute l'outil,
-//          ajoute res.candidates![0].content! à `contents`,
-//          puis ajoute { role: "user", parts: [{ functionResponse: { name, response: { result } } }] }.
-// TODO 5 : refais un appel pour obtenir la réponse finale et affiche res.text.
+const res = await ai.models.generateContent({ model: MODEL!, contents, config });
+const call = res.functionCalls?.[0];
 
-void ai;
-void MODEL;
-void contents;
-void readFile;
-throw new Error("TODO : étape 2 à écrire");
+if (!call) {
+  console.log(res.text);
+} else {
+  console.log(`[outil demandé] ${call.name}(${JSON.stringify(call.args)})`);
+  const result = readFile(call.args ?? {});
+  // On renvoie au modèle sa propre demande (avec ses éventuelles thought signatures)...
+  contents.push(res.candidates![0].content!);
+  // ...puis le résultat de l'outil.
+  contents.push({
+    role: "user",
+    parts: [{ functionResponse: { name: call.name!, response: { result } } }],
+  });
+  const final = await ai.models.generateContent({ model: MODEL!, contents, config });
+  console.log(final.text);
+}
