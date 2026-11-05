@@ -1,0 +1,5 @@
+node_modules
+.env
+# Exception volontaire : le faux .env du projet d'exemple (aucune vraie valeur)
+!workspace/.env
+.DS_Store
