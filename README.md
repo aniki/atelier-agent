@@ -1,4 +1,4 @@
-# Atelier : construire un agent en TypeScript (API Gemini)
+# Atelier : construire un agent en TypeScript (API Gemini ou OpenRouter)
 
 Module 2 · De l'agent au harnais. Tu vas construire un agent en quatre étapes, chacune ajoutant une capacité à la précédente.
 
@@ -8,11 +8,13 @@ Prérequis : Node.js 20.6 ou plus récent (22 recommandé), Git.
 
 ```bash
 npm install
-cp .env.example .env     # puis édite .env : GEMINI_API_KEY et MODEL
+cp .env.example .env     # puis édite .env : GEMINI_API_KEY (ou OPENROUTER_API_KEY) et MODEL
 npm run typecheck        # doit se terminer sans erreur
 ```
 
 Ne commite jamais `.env`. Le nom du modèle (`MODEL`) est donné par le formateur : les noms changent vite.
+
+**Fournisseur** : renseigne `GEMINI_API_KEY` *ou* `OPENROUTER_API_KEY` (si les deux sont présentes, Gemini est utilisé ; `PROVIDER=openrouter` force l'autre). Avec OpenRouter, `MODEL` est au format `fournisseur/modele`. Le code des étapes est identique : `src/openrouter.ts` traduit les appels `ai.models.generateContent` vers l'API OpenRouter (tu n'as pas à le modifier).
 
 ## Le projet d'exemple
 
